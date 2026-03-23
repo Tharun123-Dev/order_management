@@ -16,9 +16,13 @@ urlpatterns = [
     path('cart/<int:customer_id>/', views.view_cart),
 
     #  ORDER (ALL METHODS)
+    path('order/', views.order_api),
     path('order/<int:customer_id>/', views.order_api),   # POST, GET
     path('order/update/<int:order_id>/', views.order_api),  # PUT, PATCH, DELETE
 
     #  DASHBOARD
     path('dashboard/', views.dashboard),
+
+    #status
+    path('order/status/<int:order_id>/', views.order_status),
 ]

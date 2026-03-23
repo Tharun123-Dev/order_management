@@ -50,55 +50,81 @@ def customer_api(request, customer_id=None):
 def product_api(request, product_id=None):
     try:
 
+        # CREATE PRODUCT
         if request.method == "POST":
             data = request.data
-            stock = data.get("stock")
+            stock = data.get("stock", 0)
 
-            Product.objects.create(
+            product = Product.objects.create(
                 name=data["name"],
                 price=data["price"],
                 stock=stock,
                 initial_stock=stock
             )
 
-            return Response({"message": "Product created"})
+            return Response({
+                "message": "Product created",
+                "stock": product.stock
+            })
 
+        # GET ALL PRODUCTS
         if request.method == "GET" and product_id is None:
             products = Product.objects.all()
             serializer = ProductSerializer(products, many=True)
             return Response(serializer.data)
 
+        # GET SINGLE PRODUCT
         if request.method == "GET" and product_id:
-            product = Product.objects.get(id=product_id)
+            try:
+                product = Product.objects.get(id=product_id)
+            except Product.DoesNotExist:
+                return Response({"error": "Product not found"})
+
             serializer = ProductSerializer(product)
             return Response(serializer.data)
 
+        # UPDATE PRODUCT (STOCK SAFE)
         if request.method in ["PUT", "PATCH"]:
+            try:
+                product = Product.objects.get(id=product_id)
+            except Product.DoesNotExist:
+                return Response({"error": "Product not found"})
+
             data = request.data
-            product = Product.objects.get(id=product_id)
 
             product.name = data.get("name", product.name)
             product.price = data.get("price", product.price)
 
             new_stock = data.get("stock")
+
+            # STOCK UPDATE LOGIC
             if new_stock is not None:
+                if new_stock < 0:
+                    return Response({"error": "Stock cannot be negative"})
+
                 diff = new_stock - product.stock
                 product.stock = new_stock
                 product.initial_stock += diff
 
             product.save()
 
-            return Response({"message": "Product updated"})
+            return Response({
+                "message": "Product updated",
+                "stock": product.stock
+            })
 
+        # DELETE PRODUCT
         if request.method == "DELETE":
-            product = Product.objects.get(id=product_id)
+            try:
+                product = Product.objects.get(id=product_id)
+            except Product.DoesNotExist:
+                return Response({"error": "Product not found"})
+
             product.delete()
             return Response({"message": "Product deleted"})
 
     except Exception as e:
         return Response({"error": str(e)})
-
-
 # CART
 @api_view(['POST'])
 def add_to_cart(request):
@@ -219,6 +245,11 @@ def order_api(request, customer_id=None, order_id=None):
                 "status": order.status,
                 "total": total
             })
+        # GET ALL ORDERS (NEW API)
+        if request.method == "GET" and customer_id is None and order_id is None:
+          orders = Order.objects.all()
+          serializer = OrderSerializer(orders, many=True)
+          return Response(serializer.data)
 
         # GET ORDERS (Serializer Used)
         if request.method == "GET" and customer_id:
@@ -234,13 +265,16 @@ def order_api(request, customer_id=None, order_id=None):
                 return Response({"error": "Order not found"})
 
             data = request.data
-            
-            # your stock restore logic
-            if data.get("status") == "CANCELLED":
-                for item in order.items.all():
-                    product = item.product
-                    product.stock += item.quantity
-                    product.save()
+            new_status = data.get("status")
+                # Prevent duplicate cancel (very important)
+            if order.status == "CANCELLED":
+               return Response({"error": "Order already cancelled"})
+    # Restore stock ONLY when changing to CANCELLED
+            if new_status == "CANCELLED":
+               for item in order.items.all():
+                 product = item.product
+                 product.stock += item.quantity
+                 product.save()
 
             #serializer update
             serializer = OrderSerializer(order, data=data, partial=True)
@@ -300,3 +334,16 @@ def dashboard(request):
 
     except Exception as e:
         return Response({"error": str(e)})
+    
+#status
+@api_view(['GET'])
+def order_status(request, order_id):
+    try:
+        order = Order.objects.get(id=order_id)
+    except Order.DoesNotExist:
+        return Response({"error": "Order not found"})
+
+    return Response({
+        "order_id": order.id,
+        "status": order.status
+    })

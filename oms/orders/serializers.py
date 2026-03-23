@@ -7,6 +7,22 @@ class CustomerSerializer(serializers.ModelSerializer):
         model = Customer
         fields = '__all__'
 
+    # Email unique validation
+    def validate_email(self, value):
+        if Customer.objects.filter(email=value).exists():
+            raise serializers.ValidationError("Email already exists")
+        return value
+
+    # Name + Email combination validation (optional)
+    def validate(self, data):
+        name = data.get("name")
+        email = data.get("email")
+
+        if Customer.objects.filter(name=name, email=email).exists():
+            raise serializers.ValidationError("Customer already exists with same name and email")
+
+        return data
+
 
 # PRODUCT
 class ProductSerializer(serializers.ModelSerializer):
