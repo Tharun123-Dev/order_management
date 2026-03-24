@@ -2,7 +2,7 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from .models import *
 from .serializers import *
-
+from django.db.models import Sum
 
 # CUSTOMER API
 @api_view(['GET', 'POST', 'PUT', 'PATCH', 'DELETE'])
@@ -15,7 +15,7 @@ def customer_api(request, customer_id=None):
                 customer = serializer.save()
                 Cart.objects.create(customer=customer)
                 return Response({"message": "Customer created"})
-            return Response(serializer.errors)
+            return Response(serializer.errors) 
 
         if request.method == "GET" and customer_id is None:
             customers = Customer.objects.all()
@@ -35,6 +35,7 @@ def customer_api(request, customer_id=None):
                 serializer.save()
                 return Response({"message": "Customer updated"})
             return Response(serializer.errors)
+
 
         if request.method == "DELETE":
             customer = Customer.objects.get(id=customer_id)
@@ -68,10 +69,23 @@ def product_api(request, product_id=None):
             })
 
         # GET ALL PRODUCTS
+        # if request.method == "GET" and product_id is None:
+        #     products = Product.objects.all()
+        #     serializer = ProductSerializer(products, many=True)
+        #     return Response(serializer.data) 
         if request.method == "GET" and product_id is None:
-            products = Product.objects.all()
-            serializer = ProductSerializer(products, many=True)
-            return Response(serializer.data)
+          products = Product.objects.all()
+          serializer = ProductSerializer(products, many=True)
+
+    # LOW STOCK LOGIC
+          low_stock = Product.objects.filter(stock__lte=5)
+          low_stock_serializer = ProductSerializer(low_stock, many=True)
+
+          return Response({
+           "all_products": serializer.data,
+           "low_stock_count": len(low_stock_serializer.data),
+           "low_stock_products": low_stock_serializer.data
+         })
 
         # GET SINGLE PRODUCT
         if request.method == "GET" and product_id:
@@ -301,35 +315,54 @@ def order_api(request, customer_id=None, order_id=None):
 
     except Exception as e:
         return Response({"error": str(e)})
-# DASHBOARD
+
+
+
 @api_view(['GET'])
 def dashboard(request):
     try:
+        #BASIC STATS
         total_customers = Customer.objects.count()
         total_orders = Order.objects.count()
-        total_revenue = sum(order.total_amount for order in Order.objects.all())
 
+        # OTAL REVENUE (optimized)
+        total_revenue = Order.objects.aggregate(
+            total=Sum('total_amount')
+        )['total'] or 0
+
+        #LOW STOCK PRODUCTS
+        low_stock_products = Product.objects.filter(stock__lte=5)
+        low_stock_serializer = ProductSerializer(low_stock_products, many=True)
+
+        #PRODUCT ANALYTICS
         products = Product.objects.all()
         product_data = []
 
         for product in products:
-            sold = sum(item.quantity for item in OrderItem.objects.filter(product=product))
+            sold = OrderItem.objects.filter(product=product).aggregate(
+                total=Sum('quantity')
+            )['total'] or 0
+
             remaining = product.stock
 
             product_data.append({
+                "product_id": product.id,
                 "product_name": product.name,
                 "price": product.price,
                 "initial_stock": product.initial_stock,
                 "sold_quantity": sold,
                 "remaining_stock": remaining,
-                "low_stock": remaining < 5
+                "low_stock": remaining <= 5  
             })
 
+        # FINAL RESPONSE
         return Response({
             "total_customers": total_customers,
             "total_orders": total_orders,
             "total_revenue": total_revenue,
-            "products": product_data
+            "products": product_data,
+            "low_stock_count": len(low_stock_serializer.data),
+            "low_stock_products": low_stock_serializer.data
         })
 
     except Exception as e:
