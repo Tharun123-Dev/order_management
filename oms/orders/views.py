@@ -380,3 +380,66 @@ def order_status(request, order_id):
         "order_id": order.id,
         "status": order.status
     })
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+from .models import Product
+
+
+
+
+
+@api_view(['GET'])
+def stock_status(request, product_id=None):
+    try:
+
+        # SINGLE PRODUCT
+        if product_id:
+            try:
+                product = Product.objects.get(id=product_id)
+            except Product.DoesNotExist:
+                return Response({"error": "Product not found"})
+
+            stock = product.stock
+
+            if stock == 0:
+                status = "OUT OF STOCK"
+            elif stock <= 5:
+                status = "LOW STOCK"
+            else:
+                status = "IN STOCK"
+
+            return Response({
+                "product_id": product.id,
+                "product_name": product.name,
+                "current_stock": stock,
+                "status": status
+            })
+
+        # ALL PRODUCTS
+        products = Product.objects.all()
+        data = []
+
+        for product in products:
+            stock = product.stock
+
+            if stock == 0:
+                status = "OUT OF STOCK"
+            elif stock <= 5:
+                status = "LOW STOCK"
+            else:
+                status = "IN STOCK"
+
+            data.append({
+                "product_id": product.id,
+                "product_name": product.name,
+                "current_stock": stock,
+                "status": status
+            })
+
+        return Response({
+            "total_products": len(data),
+            "products": data
+        })
+
+    except Exception as e:
+        return Response({"error": str(e)})

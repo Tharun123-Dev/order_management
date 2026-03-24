@@ -24,5 +24,7 @@ urlpatterns = [
     path('dashboard/', views.dashboard),
 
     #status
-    path('order/status/<int:order_id>/', views.order_status),
+  path('product/stock-status/', views.stock_status),
+  path('product/stock-status/<int:product_id>/', views.stock_status),
+  path('order/status/<int:order_id>/', views.order_status),
 ]
